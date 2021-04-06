@@ -62,6 +62,14 @@ async function dbConnect() {
 }
 
 
+// close MongoDB database connection
+async function dbClose() {
+
+  if (qCollection) await dbClient.close();
+
+}
+
+
 /**
  * Queue management class.
  */
@@ -235,6 +243,25 @@ export class Queue {
     catch(err) {
 
       console.log(`Queue.count error:\n${ err }`);
+      return null;
+
+    }
+
+  }
+
+  /**
+   * Close queue connection.
+   */
+  async close() {
+
+    try {
+
+      await dbClose();
+
+    }
+    catch(err) {
+
+      console.log(`Queue.close error:\n${ err }`);
       return null;
 
     }

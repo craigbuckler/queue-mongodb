@@ -1,6 +1,6 @@
 {
-  "name": "queue-mongodb",
-  "version": "1.0.0",
+  "name": "@craigbuckler/queue-mongodb",
+  "version": "1.0.1",
   "description": "A simple Node.js queuing system which uses MongoDB as a permanent data store.",
   "type": "module",
   "main": "index.js",

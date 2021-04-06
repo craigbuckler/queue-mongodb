@@ -107,6 +107,17 @@ test.serial('default queue: process three items', async t => {
 });
 
 
+// close connections
+test.after('clean up', async t => {
+
+  await queueDefault.close();
+  await queueTest.close();
+
+  t.pass();
+
+});
+
+
 // pause
 function pause(ms) {
 

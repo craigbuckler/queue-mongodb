@@ -61,6 +61,16 @@ The next item on the queue can be retrieved, processed, and removed (perhaps in 
 
 If `remove()` is not run, processing is presumed to have failed. The item will be available again after 60 seconds for up to two more attempts.
 
+Finally, to close the database connection:
+
+```js
+(async () => {
+
+  await myQueue.close();
+
+})();
+```
+
 
 ## new Queue(type, [maxRetries], [processingTime])
 
@@ -77,7 +87,7 @@ Create a new queue handler.
 
 Push data to the queue. (Method is async and returns a Promise).
 
-**Kind**: instance method of [<code>Queue</code>](#queue)
+**Kind**: instance method of `Queue`.
 
 **Returns**: <code>qItem</code> - a queue item object: { `_id`, `sent` (date), `runs` (retries remaining), `data` }, or null when a failure occurs
 
@@ -92,7 +102,7 @@ Push data to the queue. (Method is async and returns a Promise).
 
 Retrieve the next item from the queue. (Method is async and returns a Promise).
 
-**Kind**: instance method of [<code>Queue</code>](#queue)
+**Kind**: instance method of `Queue`.
 
 **Returns**: <code>qItem</code> - a queue item object: { `_id`, `sent` (date), `runs` (retries remaining), `data` }, or null when no items are available
 
@@ -103,7 +113,7 @@ Remove a queued item. (Method is async and returns a Promise).
 
 This must be called once the item has been handled or it will be re-queued after `this.processingTime`.
 
-**Kind**: instance method of [<code>Queue</code>](#queue)
+**Kind**: instance method of `Queue`.
 
 **Returns**: <code>number</code> - the number of deleted items (normally 1).
 
@@ -116,7 +126,7 @@ This must be called once the item has been handled or it will be re-queued after
 
 Removes all queued items, including future ones. (Method is async and returns a Promise).
 
-**Kind**: instance method of [<code>Queue</code>](#queue)
+**Kind**: instance method of `Queue`.
 
 **Returns**: <code>number</code> - the number of deleted items.
 
@@ -125,9 +135,16 @@ Removes all queued items, including future ones. (Method is async and returns a 
 
 Count of all queued items. (Method is async and returns a Promise).
 
-**Kind**: instance method of [<code>Queue</code>](#queue)
+**Kind**: instance method of `Queue`.
 
 **Returns**: <code>number</code> - items in the queue.
+
+
+## queue.close()
+
+Close database connection. (Method is async and returns a Promise).
+
+**Kind**: instance method of `Queue`.
 
 
 ## Testing
