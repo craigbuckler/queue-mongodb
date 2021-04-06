@@ -1,0 +1,37 @@
+{
+  "name": "queue-mongodb",
+  "version": "1.0.0",
+  "description": "A simple Node.js queuing system which uses MongoDB as a permanent data store.",
+  "type": "module",
+  "main": "index.js",
+  "files": [
+    "index.js"
+  ],
+  "scripts": {
+    "test": "ava --watch --verbose"
+  },
+  "engines": {
+    "node": ">=13"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/craigbuckler/queue-mongodb.git"
+  },
+  "bugs": {
+    "url": "https://github.com/craigbuckler/queue-mongodb/issues"
+  },
+  "homepage": "https://github.com/craigbuckler/queue-mongodb#readme",
+  "keywords": [
+    "queue",
+    "mongodb"
+  ],
+  "author": "Craig Buckler",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^8.2.0",
+    "mongodb": "^3.6.5"
+  },
+  "devDependencies": {
+    "ava": "^3.15.0"
+  }
+}

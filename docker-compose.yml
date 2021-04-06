@@ -1,0 +1,44 @@
+version: '3'
+
+services:
+
+  queuedb:
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${QUEUE_DB_USER}
+      - MONGO_INITDB_ROOT_PASSWORD=${QUEUE_DB_PASS}
+    image: mongo:4.4-bionic
+    container_name: queuedb
+    volumes:
+      - queuedata:/data/db
+    networks:
+        - queuenet
+    ports:
+      - "${QUEUE_DB_PORT}:${QUEUE_DB_PORT}"
+    logging:
+      driver: "none"
+    restart: always
+
+  queuemodule:
+    environment:
+      - NODE_ENV=development
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    container_name: queuemodule
+    depends_on:
+      - queuedb
+    volumes:
+      - ./:/home/node/app
+      - queuefiles:/home/node/app/.config
+      - queuefiles:/home/node/app/.npm
+      - queuefiles:/home/node/app/node_modules
+    networks:
+      - queuenet
+    command: /bin/sh -c 'npm i && npm test'
+
+volumes:
+  queuedata:
+  queuefiles:
+
+networks:
+  queuenet:
