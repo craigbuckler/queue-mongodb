@@ -9,16 +9,19 @@ if (!process.env.QUEUE_DB_HOST) {
   dotenv.config();
 }
 
-// MongoDB database connection
+// MongoDB database client
 const
-  qCollectionName = 'queue',
-  dbName = process.env.QUEUE_DB_NAME || '',
+  dbName = process.env.QUEUE_DB_NAME || 'qdb',
+  qCollectionName = process.env.QUEUE_DB_COLL || 'queue',
+
   dbClient = new mongoDB.MongoClient(
     `mongodb://${ process.env.QUEUE_DB_USER || 'root' }:${ process.env.QUEUE_DB_PASS || 'pass' }@${ process.env.QUEUE_DB_HOST || 'localhost' }:${ process.env.QUEUE_DB_PORT || '27017' }/`,
     { useNewUrlParser: true, useUnifiedTopology: true }
   );
 
-let db, qCollection = null;
+
+let qCollection; // queue collection
+
 
 // shared connection
 async function dbConnect() {
@@ -28,10 +31,11 @@ async function dbConnect() {
 
   // connect to database
   await dbClient.connect();
-  db = dbClient.db( dbName );
 
   // collection defined?
-  let colList = await db.listCollections({ name: qCollectionName }, { nameOnly: true }).toArray();
+  const
+    db = dbClient.db( dbName ),
+    colList = await db.listCollections({ name: qCollectionName }, { nameOnly: true }).toArray();
 
   if (!colList.length) {
 
@@ -77,39 +81,45 @@ export class Queue {
 
   /**
    * Create a new queue handler.
-   * @param {string} type="DEFAULT" - queue identifier (any number of separate queues can be defined)
-   * @param {number} [maxRetries=5] - maximum number if times an item can be retrieved from the queue before processing is assumed to be complete
-   * @param {number} [processingTime=300] - maximum time in seconds a queued item held for processing
+   * @param {string} [type="DEFAULT"] - queue identifier (any number of separate queues can be defined)
    */
-  constructor(type, maxRetries = 5, processingTime = 300) {
+  constructor(type = 'DEFAULT') {
 
-    this.type = type || 'DEFAULT';
-    this.maxRetries = maxRetries;
-    this.processingTime = processingTime;
+    this.type = type;
+    this.maxTries = 3;
+    this.processingTime = 300;
 
   }
 
   /**
    * Push data to the queue.
    * @param {any} data - data to queue
-   * @param {number} [maxRetries] - maximum number if times an item can be retrieved from the queue (overrides this.maxRetries)
-   * @param {Date} [delayUntil] - date which can be set in the future to delay processing
-   * @returns {qItem} a queue item object: { _id, sent: {date}, runs: {retries remaining}, data: {data}}, or null when a failure occurs
+   * @param {number}|{Date} [delayUntil] - optional future seconds or date to delay processing
+   * @param {number} [maxTries=3] - the number times an item queued then re-queued before it is removed from the queue (overrides this.maxTries)
+   * @returns {qItem} a queue item object: { _id, sent: {date}, runs: {tries remaining}, data: {data}}, or null when a failure occurs
    */
-  async send(data = null, maxRetries, delayUntil) {
+  async send(data = null, delayUntil, maxTries) {
 
     try {
 
+      // calculate start date/time
+      let proc = new Date();
+      if (delayUntil instanceof Date) {
+        proc = delayUntil;
+      }
+      else if (!isNaN(delayUntil)) {
+        proc = new Date( +proc + delayUntil * 1000);
+      }
+
+      // add item to queue
       const
-        runs  = maxRetries || this.maxRetries,
+        runs  = maxTries || this.maxTries,
         q     = await dbConnect(),
         ins   = await q.insertOne({
-          type: this.type,
-          proc: delayUntil && delayUntil instanceof Date ? delayUntil : new Date(),
-          runs,
-          data
+          type: this.type, proc, runs, data
         });
 
+      // return qItem
       return ins && ins.insertedCount && ins.insertedId ? { _id: ins.insertedId, sent: ins.insertedId.getTimestamp(), runs, data } : null;
 
     }
@@ -125,12 +135,17 @@ export class Queue {
 
   /**
    * Retrieve the next item from the queue.
-   * @returns {qItem} a queue item object: { _id, sent: {date}, runs: {retries remaining}, data: {data}}, or null when no items are available
+   * @returns {qItem} a queue item object: { _id, sent: {date}, runs: {tries remaining}, data: {data}}, or null when no items are available
+   * @param {number} [processingTime=300] - optional minimum processing time in seconds. An item will be re-queued after this expires (overrides this.processingTime)
    */
-  async receive() {
+  async receive(processingTime) {
 
     try {
 
+      // next processing time
+      processingTime = Math.max(1, processingTime || this.processingTime);
+
+      // find and update next item on queue
       const
         now = new Date(),
         q   = await dbConnect(),
@@ -140,7 +155,7 @@ export class Queue {
             proc: { $lt: now }
           },
           {
-            $set: { proc: new Date( +new Date() + this.processingTime * 1000 ) },
+            $set: { proc: new Date( +now + processingTime * 1000 ) },
             $inc: { runs: -1 }
           },
           {
@@ -150,17 +165,18 @@ export class Queue {
         );
 
       const v = rec && rec.value;
+
+      // nothing available
       if (!v || !v._id) return null;
 
       const qItem = { _id: v._id, sent: v._id.getTimestamp(), runs: v.runs, data: v.data };
 
+      // no more runs permitted - delete item
       if (!v.runs) {
-
-        // no more runs permitted - delete item
         await this.remove( qItem );
-
       }
 
+      // return qItem
       return qItem;
 
     }
@@ -175,8 +191,8 @@ export class Queue {
 
 
   /**
-   * Remove a queued item. This must be called once the item has been handled or it will be re-queued after `this.processingTime`.
-   * @param {qItem} qItem - the queue item to remove
+   * Remove a queued item. This must be called once the item has been handled or it will be re-queued (if tries remain)
+   * @param {qItem} qItem - remove a queue item (returned by send() or receive())
    * @returns {number} the number of deleted items (normally 1)
    */
   async remove(qItem) {
