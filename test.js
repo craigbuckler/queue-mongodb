@@ -6,10 +6,6 @@ const
   queueTest = new Queue('test'),
   dataItem = { a:1, b:2, c:3 };
 
-// set queueTest default processing time to 1 second with up to two tries
-queueTest.processingTime = 1;
-queueTest.maxTries = 2;
-
 
 // purge existing items
 test.serial('default queue: purge', async t => {
@@ -62,17 +58,19 @@ test.serial('test queue   : re-queuing', async t => {
 
   // receive same item
   const q1rec = await queueTest.receive();
-  t.assert( q1rec && q1rec._id.toString() === q1._id.toString() && q1rec.sent.toString() === q1.sent.toString() && q1rec.runs === 1 && q1rec.data === q1.data );
+  t.assert( q1rec && q1rec._id.toString() === q1._id.toString() && q1rec.sent.toString() === q1.sent.toString() && q1rec.data === q1.data );
 
   // check nothing is waiting
   t.falsy( await queueTest.receive() );
 
-  // wait for 1 second
-  await pause(1000);
+  // add same item to queue
+  const q2 = await queueTest.send( q1.data );
+  t.assert( q2 && q2._id && q2.sent instanceof Date && q2.data === q1.data );
 
-  // make sure same item has been requeued for the last time
+  // receive same item
   const q2rec = await queueTest.receive();
-  t.assert( q2rec && q2rec._id.toString() === q1._id.toString() && q2rec.sent.toString() === q1.sent.toString() && q2rec.runs === 0 && q1rec.data === q1.data );
+
+  t.assert( q2rec && q2rec._id.toString() !== q1._id.toString() && q2rec.data === q1rec.data );
 
   // make sure queue is now empty
   t.is( await queueTest.count(), 0);
@@ -81,10 +79,10 @@ test.serial('test queue   : re-queuing', async t => {
 
 
 // test future queuing
-test.serial('test queue   : future queuing', async t => {
+test.serial('test queue   : future queuing (seconds)', async t => {
 
-  // send item to queue to be processed at 1s into the future with 1 retry
-  const q1 = await queueTest.send( 'future', 1, 1 );
+  // send item to queue to be processed at 1s into the future
+  const q1 = await queueTest.send( 'future', 1 );
   t.assert( q1 && q1._id && q1.sent instanceof Date && q1.data === 'future' );
 
   // check nothing is on queue
@@ -95,7 +93,30 @@ test.serial('test queue   : future queuing', async t => {
 
   // make sure same item has been requeued for the last time
   const q1rec = await queueTest.receive();
-  t.assert( q1rec && q1rec._id.toString() === q1._id.toString() && q1rec.sent.toString() === q1.sent.toString() && q1rec.runs === 0 && q1rec.data === q1.data );
+  t.assert( q1rec && q1rec._id.toString() === q1._id.toString() && q1rec.sent.toString() === q1.sent.toString() && q1rec.data === q1.data );
+
+  // make sure queue is now empty
+  t.is( await queueTest.count(), 0);
+
+});
+
+
+// test future queuing
+test.serial('test queue   : future queuing (date)', async t => {
+
+  // send item to queue to be processed at 1s into the future
+  const q1 = await queueTest.send( 'future', new Date(+new Date() + 1000) );
+  t.assert( q1 && q1._id && q1.sent instanceof Date && q1.data === 'future' );
+
+  // check nothing is on queue
+  t.falsy( await queueTest.receive() );
+
+  // wait for 1.2 seconds
+  await pause(1200);
+
+  // make sure same item has been requeued for the last time
+  const q1rec = await queueTest.receive();
+  t.assert( q1rec && q1rec._id.toString() === q1._id.toString() && q1rec.sent.toString() === q1.sent.toString() && q1rec.data === q1.data );
 
   // make sure queue is now empty
   t.is( await queueTest.count(), 0);
@@ -113,16 +134,26 @@ test.serial('default queue: process three items', async t => {
 
   t.falsy( await queueDefault.receive() );
 
-  t.assert( q1._id && q1.sent instanceof Date && q1.runs && q1.data === 'Craig' );
-  t.assert( q2._id && q2.sent instanceof Date && q2.runs && q2.data === 51 );
-  t.assert( q3._id && q3.sent instanceof Date && q3.runs );
+  t.assert( q1._id && q1.sent instanceof Date && q1.data === 'Craig' );
+  t.assert( q2._id && q2.sent instanceof Date && q2.data === 51 );
+  t.assert( q3._id && q3.sent instanceof Date);
   t.deepEqual( q3.data, dataItem );
 
-  t.truthy( await queueDefault.remove(q1) );
-  t.falsy(  await queueDefault.remove(q1) );
-  t.truthy( await queueDefault.remove(q2) );
-  t.truthy( await queueDefault.remove(q3) );
+  t.is( await queueDefault.count(), 0);
 
+});
+
+
+// remove queued item
+test.serial('default queue: remove items', async t => {
+
+  const
+    data = 'to remove',
+    q1 = await queueDefault.send( data );
+  t.assert( q1._id && q1.sent instanceof Date && q1.data === data );
+
+  t.is( await queueDefault.count(), 1);
+  t.truthy( await queueDefault.remove(q1) );
   t.is( await queueDefault.count(), 0);
 
 });

@@ -1,6 +1,6 @@
 {
   "name": "@craigbuckler/queue-mongodb",
-  "version": "1.0.2",
+  "version": "1.1.1",
   "description": "A simple Node.js queuing system which uses MongoDB as a permanent data store.",
   "type": "module",
   "main": "index.js",
@@ -29,7 +29,7 @@
   "license": "MIT",
   "dependencies": {
     "dotenv": "^8.2.0",
-    "mongodb": "^3.6.5"
+    "mongodb": "^3.6.6"
   },
   "devDependencies": {
     "ava": "^3.15.0"

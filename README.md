@@ -7,7 +7,7 @@ A simple Node.js queuing system which uses MongoDB as a permanent data store.
 
 Install the module with `npm install queue-mongodb`.
 
-Database configuration parameters must be defined as environment variables or set in a `.env` file in the project root, e.g.
+Defined database configuration parameters as environment variables or set in a `.env` file in the project root, e.g.
 
 ```env
 QUEUE_DB_HOST=localhost
@@ -18,40 +18,49 @@ QUEUE_DB_NAME=qdb
 QUEUE_DB_COLL=queue
 ```
 
-A queue management collection named `queue` will be added to the `qdb` database.
+In this example, a queue management collection named `queue` will be added to the `qdb` database and accessed by the user `root` using a password `mysecret`. `QUEUE_DB_USER` and `QUEUE_DB_PASS` can be unset or have empty strings if database authentication is not required.
 
 
 ## Example
 
-The following code defines a queue named `myqueue` and defaults. When an item is not removed from the queue, it will be re-queued 60 seconds later. This will occur until the item has been received a total of 3 times.
+The following code defines a queue named `myqueue`:
 
 ```js
 import { Queue } from 'queue-mongodb';
 const myQueue = new Queue('myqueue');
-
-myQueue.processingTime = 60;
-myQueue.maxTries = 3;
 ```
 
-The following code adds three items to the queue.
+The following code adds three items to the queue:
 
 ```js
 // queue items
 (async () => {
 
-  // item 1: string data available immediately
-  await myQueue.send( 'item 1' );
+  // item 1: string data put on queue
+  const item1 = await myQueue.send( 'item 1' );
 
-  // item 2: number data available in 10 seconds
-  await myQueue.send( 42, 10);
+  // item 2: object data put on queue
+  const item2 = await myQueue.send( { a:1, b:2, c:3 } );
 
-  // item 3: object data available immediately, 5 tries permitted
-  await myQueue.send( { a:1, b:2, c:3 }, , 5 );
+  // item 3: number data queued in 10 seconds
+  const item3 = await myQueue.send( 42, 10 );
 
 })();
 ```
 
-The next item on the queue can be retrieved, processed, and removed (perhaps in a script called using a cron job):
+A `qItem` object is returned by the `.send()` method:
+
+```json
+{
+  "_id" : <database-ID>,
+  "sent": <date-item-was-queued>,
+  "data": <data-sent>
+}
+```
+
+or `null` is returned when queuing is unsuccessful.
+
+The next item on the queue can be retrieved and processed -- possibly by a script run via a cron job. If processing fails, the item can be re-queued after an optional delay:
 
 ```js
 (async () => {
@@ -60,21 +69,23 @@ The next item on the queue can be retrieved, processed, and removed (perhaps in 
   const qItem = await myQueue.receive();
 
   // item is returned
-  if (qItem) {
+  if ( qItem ) {
 
-    // ...process...
+    // ... process qItem.data ...
 
-    // remove after successful processing
-    await myQueue.remove( qItem );
+    // processing failed - requeue item in 60 seconds
+    if (processingFails) {
+
+      await myQueue.send( qItem.data, 60 );
+
+    }
 
   }
 
 })();
 ```
 
-Processing is presumed to have failed if `remove()` is not run. The item is re-queued after 60 seconds (`myQueue.processingTime`) for up to two further attempts (or four for item 3).
-
-Finally, close the database connection:
+Finally, the queue connection can be closed:
 
 ```js
 (async () => {
@@ -85,7 +96,7 @@ Finally, close the database connection:
 ```
 
 
-## new Queue(type, [maxTries], [processingTime])
+## new Queue(type)
 
 Create a new queue handler.
 
@@ -94,21 +105,7 @@ Create a new queue handler.
 | type | <code>string</code> | <code>"DEFAULT"</code> | queue identifier (any number of separate queues can be defined) |
 
 
-## queue.processingTime = {number}
-
-The minimum time in seconds a queued item is held for processing before it is re-queued.
-
-**Kind**: instance property of `Queue`.
-
-
-## queue.maxTries = {number}
-
-The number of times an item can be returned from the head of the queue before it is removed.
-
-**Kind**: instance property of `Queue`.
-
-
-## queue.send(data, [delayUntil], [maxTries]) ⇒ <code>qItem</code>
+## queue.send(data, [delayUntil]) ⇒ <code>qItem</code>
 
 Push data to the queue. (Method is async and returns a Promise).
 
@@ -119,9 +116,8 @@ Push data to the queue. (Method is async and returns a Promise).
 ```js
 {
   "_id" : { MongoDB ID }, // ID of queued item
-  "sent", { Date }        // date/time item was queued
-  "runs", { number}       // processing runs remaining
-  "data"  { any }         // data sent
+  "sent": { Date },       // date/time item was queued
+  "data": { any }         // data queued
 }
 ```
 
@@ -130,28 +126,21 @@ Push data to the queue. (Method is async and returns a Promise).
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
 | data | <code>any</code> | <code>null</code> | data to queue |
-| [delayUntil] | <code>number</code> or <code>Date</code> | <code>0</code> | optional future date to delay processing, passed as a number of seconds or a Date object |
-| [maxTries] | <code>number</code> | <code>this.maxTries</code> | number of times an item can be returned from the head of the queue before it is removed |
+| [delayUntil] | <code>number</code> or <code>Date</code> | <code>0</code> | optional future seconds or date to delay adding to the queue |
 
 
-## queue.receive([processingTime]) ⇒ <code>qItem</code>
+## queue.receive() ⇒ <code>qItem</code>
 
-Retrieve the next item from the queue. (Method is async and returns a Promise).
+Retrieve and remove the next item from the queue. (Method is async and returns a Promise).
 
 **Kind**: instance method of `Queue`.
 
-**Returns**: <code>qItem</code> - a queue item object ({ `_id`, `sent`, `runs`, `data` }) or `null` when no items are available
-
-| Param | Type | Default | Description |
-| --- | --- | --- | --- |
-| [processingTime] | <code>number</code> | <code>this.processingTime</code> | minimum time in seconds a queued item is held for processing before it is re-queued |
+**Returns**: <code>qItem</code> - a queue item object ({ `_id`, `sent`, `data` }) or `null` when no items are available.
 
 
 ## queue.remove(qItem) ⇒ <code>number</code>
 
-Remove a queued item. (Method is async and returns a Promise).
-
-This must be called once the queued item has been handled or it will be re-queued after a processing time has expired.
+Remove a known queued item. (Method is async and returns a Promise).
 
 **Kind**: instance method of `Queue`.
 
@@ -159,7 +148,7 @@ This must be called once the queued item has been handled or it will be re-queue
 
 | Param | Type | Description |
 | --- | --- | --- |
-| qItem | <code>qItem</code> | queue item to remove (returned by `send()` or `receive()`) |
+| qItem | <code>qItem</code> | queue item to remove (returned by `.send()`) |
 
 
 ## queue.purge() ⇒ <code>number</code>
@@ -182,7 +171,7 @@ Count of all queued items, including future ones. (Method is async and returns a
 
 ## queue.close()
 
-Close database connection. (Method is async and returns a Promise).
+Close queue and database connection. (Method is async and returns a Promise).
 
 **Kind**: instance method of `Queue`.
 
